@@ -15,4 +15,5 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
 
     // NUEVO para HU-05: listar todos los miembros de un hogar
     List<Usuario> findByFamiliaId(Long familiaId);
+    //Encontrar usuario por ID. Nuevo para Hu04
 }
