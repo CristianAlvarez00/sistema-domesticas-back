@@ -2,12 +2,15 @@ package com.sistema.tareas_domesticas.service;
 
 import com.sistema.tareas_domesticas.model.Tarea;
 import com.sistema.tareas_domesticas.model.Usuario;
+import com.sistema.tareas_domesticas.dto.TareaDTO; // Importar DTO para no trabajar con modelo directamente.
+import com.sistema.tareas_domesticas.model.enums.EstadoAlerta;
 import com.sistema.tareas_domesticas.repository.TareaRepository;
 import com.sistema.tareas_domesticas.repository.UsuarioRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.stream.Collectors; // Para transformar la lista
 
 @Service
 public class TareaService {
@@ -64,13 +67,59 @@ public class TareaService {
     }
 
     /**
-     * HU-07: Listar tareas del hogar.
+     * HU-07 ACTUALIZADA. Ya no trabaja con Modelo, trabaja con Data transfer Object.
+     *
      * Este método es indispensable para el endpoint en TareaController.
      */
-    public List<Tarea> listarTareasPorHogar(Long hogarId) {
+    public List<TareaDTO> listarTareasPorHogar(Long hogarId) {
         if (hogarId == null) {
             throw new RuntimeException("El ID del hogar es obligatorio para listar tareas");
         }
-        return tareaRepository.findByHogarId(hogarId);
+        List<Tarea> tareas = tareaRepository.findByHogarId(hogarId);
+        LocalDate hoy = LocalDate.now();
+        return tareas.stream().map(tarea -> {
+            TareaDTO dto = new TareaDTO(null,null,null,null,null,null,null,null, null);
+            dto.setId(tarea.getId());
+            dto.setNombre(tarea.getNombre());
+            dto.setDescripcion(tarea.getDescripcion());
+            dto.setPrioridad(tarea.getPrioridad());
+            dto.setFechaLimite(tarea.getFechaLimite());
+            dto.setEstado(tarea.getEstado());
+            dto.setHogarId(tarea.getHogarId());
+            dto.setUsuarioAsignadoNombre(tarea.getUsuarioAsignadoNombre());
+            if ("COMPLETADA".equalsIgnoreCase(tarea.getEstado())) {
+                // Si la tarea ya se hizo, no hay alerta de vencimiento
+                dto.setAlerta(null);
+            } else {
+                if (tarea.getFechaLimite().isBefore(hoy)) {
+                    dto.setAlerta(EstadoAlerta.VENCIDA);
+                } else if (tarea.getFechaLimite().isEqual(hoy)) {
+                    dto.setAlerta(EstadoAlerta.URGENTE);
+                } else {
+                    dto.setAlerta(EstadoAlerta.PENDIENTE);
+                }
+            }
+
+            return dto;
+        }).collect(Collectors.toList());
+
     }
+    public List<TareaDTO> obtenerHistorialPorHogar(Long hogarId) {
+        List<Tarea> tareasCompletadas = tareaRepository.findByHogarIdAndEstadoOrderByFechaLimiteDesc(hogarId, "COMPLETADA");
+
+        return tareasCompletadas.stream()
+                .map(t -> new TareaDTO(
+                        t.getId(),
+                        t.getNombre(),
+                        t.getDescripcion(),
+                        t.getPrioridad(),
+                        t.getFechaLimite(),
+                        t.getEstado(),
+                        t.getHogarId(),
+                        t.getUsuarioAsignadoNombre(),
+                        null // No hay alerta para tareas completadas
+                ))
+                .collect(Collectors.toList());
+    }
+
 }

@@ -33,4 +33,6 @@ public interface TareaRepository extends JpaRepository<Tarea, Long> {
      * antes de ser eliminado del hogar.
      */
     List<Tarea> findByUsuarioAsignadoIdAndEstado(Long usuarioAsignadoId, String estado);
+
+    List<Tarea> findByHogarIdAndEstadoOrderByFechaLimiteDesc(Long hogarId, String estado);
 }

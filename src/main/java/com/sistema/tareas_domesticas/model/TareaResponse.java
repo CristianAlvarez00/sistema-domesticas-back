@@ -14,4 +14,5 @@ public class TareaResponse {
     private LocalDate fechaLimite;
     private String estado;
     private Long hogarId;
+    private String alerta;
 }

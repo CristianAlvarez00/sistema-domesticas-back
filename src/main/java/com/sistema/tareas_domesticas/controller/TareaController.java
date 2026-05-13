@@ -41,7 +41,8 @@ public class TareaController {
                 tarea.getPrioridad(),
                 tarea.getFechaLimite(),
                 tarea.getEstado(),
-                tarea.getHogarId()
+                tarea.getHogarId(),
+                null
         );
     }
 
@@ -59,7 +60,26 @@ public class TareaController {
                         t.getPrioridad(),
                         t.getFechaLimite(),
                         t.getEstado(),
-                        t.getHogarId()
+                        t.getHogarId(),
+                        t.getAlerta() != null ? t.getAlerta().name() : null // Pasamos la alerta como String
+                ))
+                .collect(Collectors.toList());
+    }
+    /**
+     * HU-14: Historial de tareas completadas
+     */
+    @GetMapping("/hogar/{hogarId}/historial")
+    public List<TareaResponse> obtenerHistorial(@PathVariable Long hogarId) {
+        return tareaService.obtenerHistorialPorHogar(hogarId).stream()
+                .map(t -> new TareaResponse(
+                        t.getId(),
+                        t.getNombre(),
+                        t.getDescripcion(),
+                        t.getPrioridad(),
+                        t.getFechaLimite(),
+                        t.getEstado(),
+                        t.getHogarId(),
+                        null // Alerta siempre null en historial
                 ))
                 .collect(Collectors.toList());
     }
