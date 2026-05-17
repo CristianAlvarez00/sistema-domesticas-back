@@ -5,9 +5,11 @@ import com.sistema.tareas_domesticas.model.Tarea;
 import com.sistema.tareas_domesticas.model.TareaResponse;
 import com.sistema.tareas_domesticas.service.TareaService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -34,15 +36,7 @@ public class TareaController {
         );
 
         // Retornamos la respuesta mapeada al DTO TareaResponse
-        return new TareaResponse(
-                tarea.getId(),
-                tarea.getNombre(),
-                tarea.getDescripcion(),
-                tarea.getPrioridad(),
-                tarea.getFechaLimite(),
-                tarea.getEstado(),
-                tarea.getHogarId()
-        );
+        return mapToResponse(tarea);
     }
 
     /**
@@ -52,15 +46,52 @@ public class TareaController {
     @GetMapping("/hogar/{hogarId}")
     public List<TareaResponse> listarTareasPorHogar(@PathVariable Long hogarId) {
         return tareaService.listarTareasPorHogar(hogarId).stream()
-                .map(t -> new TareaResponse(
-                        t.getId(),
-                        t.getNombre(),
-                        t.getDescripcion(),
-                        t.getPrioridad(),
-                        t.getFechaLimite(),
-                        t.getEstado(),
-                        t.getHogarId()
-                ))
+                .map(this::mapToResponse)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * HU-10: Eliminar una tarea.
+     * DELETE /api/tareas/{id}?usuarioId={usuarioId}
+     * Solo el ADMINISTRADOR del hogar puede eliminar tareas.
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Map<String, String>> eliminarTarea(
+            @PathVariable Long id,
+            @RequestParam Long usuarioId) {
+        tareaService.eliminarTarea(id, usuarioId);
+        return ResponseEntity.ok(Map.of("mensaje", "Tarea eliminada exitosamente"));
+    }
+
+    /**
+     * HU-11: Cambiar el estado de una tarea.
+     * PATCH /api/tareas/{id}/estado
+     * Body: { "usuarioId": 1, "estado": "EN_PROGRESO" }
+     * Solo el responsable asignado puede cambiar el estado.
+     */
+    @PatchMapping("/{id}/estado")
+    public TareaResponse cambiarEstado(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body) {
+        Long usuarioId = Long.valueOf(body.get("usuarioId").toString());
+        String nuevoEstado = body.get("estado").toString();
+        Tarea tarea = tareaService.cambiarEstado(id, usuarioId, nuevoEstado);
+        return mapToResponse(tarea);
+    }
+
+    /**
+     * Método auxiliar para mapear Tarea -> TareaResponse.
+     */
+    private TareaResponse mapToResponse(Tarea t) {
+        return new TareaResponse(
+                t.getId(),
+                t.getNombre(),
+                t.getDescripcion(),
+                t.getPrioridad(),
+                t.getFechaLimite(),
+                t.getEstado(),
+                t.getHogarId(),
+                t.getFechaCompletada()
+        );
     }
 }

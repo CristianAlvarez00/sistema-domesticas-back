@@ -3,6 +3,7 @@ package com.sistema.tareas_domesticas.model;
 import jakarta.persistence.*;
 import lombok.Data;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "tareas")
@@ -38,4 +39,11 @@ public class Tarea {
 
     @Column(name = "usuario_asignado_nombre")
     private String usuarioAsignadoNombre; // Para mostrar el nombre en la TaskCard directamente
+
+    /**
+     * HU-11: Fecha y hora en que la tarea fue marcada como COMPLETADA.
+     * Se registra automáticamente al cambiar el estado a COMPLETADA.
+     */
+    @Column(name = "fecha_completada")
+    private LocalDateTime fechaCompletada;
 }
