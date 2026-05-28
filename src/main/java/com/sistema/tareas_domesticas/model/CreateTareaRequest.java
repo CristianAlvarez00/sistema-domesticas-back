@@ -1,7 +1,8 @@
 package com.sistema.tareas_domesticas.model;
 
-import lombok.Data;
 import java.time.LocalDate;
+
+import lombok.Data;
 
 @Data
 public class CreateTareaRequest {
@@ -10,4 +11,5 @@ public class CreateTareaRequest {
     private String descripcion;
     private String prioridad;
     private LocalDate fechaLimite;
+    private Long usuarioAsignadoId; // Necesario para HU-09: editar tarea
 }
