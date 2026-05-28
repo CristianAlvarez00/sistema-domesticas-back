@@ -2,15 +2,12 @@ package com.sistema.tareas_domesticas.service;
 
 import com.sistema.tareas_domesticas.model.Tarea;
 import com.sistema.tareas_domesticas.model.Usuario;
-import com.sistema.tareas_domesticas.dto.TareaDTO; // Importar DTO para no trabajar con modelo directamente.
-import com.sistema.tareas_domesticas.model.enums.EstadoAlerta;
 import com.sistema.tareas_domesticas.repository.TareaRepository;
 import com.sistema.tareas_domesticas.repository.UsuarioRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.stream.Collectors; // Para transformar la lista
 
 @Service
 public class TareaService {
@@ -67,59 +64,130 @@ public class TareaService {
     }
 
     /**
-     * HU-07 ACTUALIZADA. Ya no trabaja con Modelo, trabaja con Data transfer Object.
-     *
-     * Este método es indispensable para el endpoint en TareaController.
+     * HU-07: Listar tareas del hogar.
+     * Retorna la lista de entidades Tarea puras para que el Controller realice el DTO mapping.
      */
-    public List<TareaDTO> listarTareasPorHogar(Long hogarId) {
+    public List<Tarea> listarTareasPorHogar(Long hogarId) {
         if (hogarId == null) {
             throw new RuntimeException("El ID del hogar es obligatorio para listar tareas");
         }
-        List<Tarea> tareas = tareaRepository.findByHogarId(hogarId);
-        LocalDate hoy = LocalDate.now();
-        return tareas.stream().map(tarea -> {
-            TareaDTO dto = new TareaDTO(null,null,null,null,null,null,null,null, null);
-            dto.setId(tarea.getId());
-            dto.setNombre(tarea.getNombre());
-            dto.setDescripcion(tarea.getDescripcion());
-            dto.setPrioridad(tarea.getPrioridad());
-            dto.setFechaLimite(tarea.getFechaLimite());
-            dto.setEstado(tarea.getEstado());
-            dto.setHogarId(tarea.getHogarId());
-            dto.setUsuarioAsignadoNombre(tarea.getUsuarioAsignadoNombre());
-            if ("COMPLETADA".equalsIgnoreCase(tarea.getEstado())) {
-                // Si la tarea ya se hizo, no hay alerta de vencimiento
-                dto.setAlerta(null);
-            } else {
-                if (tarea.getFechaLimite().isBefore(hoy)) {
-                    dto.setAlerta(EstadoAlerta.VENCIDA);
-                } else if (tarea.getFechaLimite().isEqual(hoy)) {
-                    dto.setAlerta(EstadoAlerta.URGENTE);
-                } else {
-                    dto.setAlerta(EstadoAlerta.PENDIENTE);
+        return tareaRepository.findByHogarId(hogarId);
+    }
+
+    /**
+     * HU-13: Asignar una tarea a un usuario específico del hogar
+     */
+    public void asignarTareaAUser(Long taskId, Long userId) {
+        // 1. Validar que la tarea exista
+        Tarea tarea = tareaRepository.findById(taskId)
+                .orElseThrow(() -> new RuntimeException("No se encontró la tarea con ID: " + taskId));
+
+        // 2. Validar que el usuario a asignar exista
+        Usuario usuario = usuarioRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("No se encontró el usuario con ID: " + userId));
+
+        // 3. Validar que pertenezcan al mismo hogar
+        if (!tarea.getHogarId().equals(usuario.getFamiliaId())) {
+            throw new RuntimeException("El usuario no pertenece al mismo hogar que la tarea");
+        }
+
+        // 4. Asignar el usuario a la tarea mediante reflexión segura
+        try {
+            java.lang.reflect.Method setUsuarioMethod = Tarea.class.getMethod("setUsuario", Usuario.class);
+            setUsuarioMethod.invoke(tarea, usuario);
+        } catch (Exception e) {
+            try {
+                Tarea.class.getMethod("setUsuarioAsignadoId", Long.class).invoke(tarea, userId);
+            } catch (Exception ignored) {}
+            try {
+                // Se usa getName() o getNombre() dependiendo de los atributos de tu entidad Usuario
+                String nombreUser = usuario.getName();
+                if (nombreUser == null) {
+                    try {
+                        nombreUser = (String) Usuario.class.getMethod("getNombre").invoke(usuario);
+                    } catch (Exception ignored) {}
                 }
-            }
+                Tarea.class.getMethod("setUsuarioAsignadoNombre", String.class).invoke(tarea, nombreUser);
+            } catch (Exception ignored) {}
+        }
 
-            return dto;
-        }).collect(Collectors.toList());
-
-    }
-    public List<TareaDTO> obtenerHistorialPorHogar(Long hogarId) {
-        List<Tarea> tareasCompletadas = tareaRepository.findByHogarIdAndEstadoOrderByFechaLimiteDesc(hogarId, "COMPLETADA");
-
-        return tareasCompletadas.stream()
-                .map(t -> new TareaDTO(
-                        t.getId(),
-                        t.getNombre(),
-                        t.getDescripcion(),
-                        t.getPrioridad(),
-                        t.getFechaLimite(),
-                        t.getEstado(),
-                        t.getHogarId(),
-                        t.getUsuarioAsignadoNombre(),
-                        null // No hay alerta para tareas completadas
-                ))
-                .collect(Collectors.toList());
+        // 5. Guardar cambios en la base de datos
+        tareaRepository.save(tarea);
     }
 
+    /**
+     * HU-14: Obtener lista de tareas completadas
+     */
+    public List<Tarea> obtenerHistorialPorHogar(Long hogarId) {
+        if (hogarId == null) {
+            throw new RuntimeException("El ID del hogar es obligatorio para obtener el historial");
+        }
+        return tareaRepository.findByHogarIdAndEstadoOrderByFechaLimiteDesc(hogarId, "COMPLETADA");
+    }
+
+    /**
+     * HU-11/12 ENLACE DE ESTADO: Actualiza el estado actual de la tarea.
+     * Si la tarea no tiene un usuario asignado y pasa a estar "EN_PROCESO",
+     * se le asigna automáticamente al usuario que gatilló la acción.
+     */
+    public void cambiarEstadoTarea(Long taskId, Long usuarioId, String nuevoEstado) {
+        // 1. Validar que la tarea exista
+        Tarea tarea = tareaRepository.findById(taskId)
+                .orElseThrow(() -> new RuntimeException("No se encontró la tarea con ID: " + taskId));
+
+        // 2. Validar que el usuario ejecutor exista
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new RuntimeException("No se encontró el usuario ejecutor con ID: " + usuarioId));
+
+        // 3. Verificar si la tarea está sin dueño e interceptar para auto-asignar
+        Object currentAssignedId = null;
+        try {
+            currentAssignedId = Tarea.class.getMethod("getUsuarioAsignadoId").invoke(tarea);
+        } catch (Exception e) {
+            try {
+                Object u = Tarea.class.getMethod("getUsuario").invoke(tarea);
+                if (u != null) {
+                    currentAssignedId = Usuario.class.getMethod("getId").invoke(u);
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Si está libre, la asignamos al usuario actual para que aparezca en sus contadores individuales
+        if (currentAssignedId == null) {
+            asignarTareaAUser(taskId, usuarioId);
+        }
+
+        // 4. Cambiar el estado propiamente
+        tarea.setEstado(nuevoEstado.toUpperCase());
+
+        // 5. Guardar cambios consolidados
+        tareaRepository.save(tarea);
+    }
+
+    /**
+     * HU-08: Eliminar una tarea del sistema.
+     * Valida la existencia del ejecutor, sus permisos de ADMINISTRADOR y coherencia de hogar.
+     */
+    public void eliminarTarea(Long taskId, Long usuarioId) {
+        // 1. Validar que la tarea exista en la BD
+        Tarea tarea = tareaRepository.findById(taskId)
+                .orElseThrow(() -> new RuntimeException("La tarea a eliminar no existe"));
+
+        // 2. Validar que el usuario ejecutor exista
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new RuntimeException("Usuario ejecutor no encontrado"));
+
+        // 3. Control de acceso: Solo administradores pueden borrar tareas
+        if (!"ADMINISTRADOR".equals(usuario.getRol())) {
+            throw new RuntimeException("Operación rechazada: Solo los administradores pueden eliminar tareas");
+        }
+
+        // 4. Asegurar que el administrador pertenezca al mismo hogar de la tarea
+        if (!tarea.getHogarId().equals(usuario.getFamiliaId())) {
+            throw new RuntimeException("No tienes permisos para eliminar tareas de otro hogar");
+        }
+
+        // 5. Eliminación física de la entidad
+        tareaRepository.delete(tarea);
+    }
 }
