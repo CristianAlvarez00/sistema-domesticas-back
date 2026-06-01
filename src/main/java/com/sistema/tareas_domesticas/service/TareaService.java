@@ -1,5 +1,6 @@
 package com.sistema.tareas_domesticas.service;
 
+import com.sistema.tareas_domesticas.model.MiembroCargaTrabajoResponse;
 import com.sistema.tareas_domesticas.model.Tarea;
 import com.sistema.tareas_domesticas.model.Usuario;
 import com.sistema.tareas_domesticas.repository.TareaRepository;
@@ -8,6 +9,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class TareaService {
@@ -72,6 +75,101 @@ public class TareaService {
             throw new RuntimeException("El ID del hogar es obligatorio para listar tareas");
         }
         return tareaRepository.findByHogarId(hogarId);
+    }
+
+    /**
+     * HU-09: Listar mis tareas asignadas.
+     */
+    public List<Tarea> listarTareasPorUsuarioAsignado(Long usuarioId) {
+        if (usuarioId == null) {
+            throw new RuntimeException("El ID del usuario es obligatorio para listar sus tareas");
+        }
+        return tareaRepository.findByUsuarioAsignadoId(usuarioId);
+    }
+
+    public List<Tarea> listarTareasPorUsuarioAsignadoYEstado(Long usuarioId, String estado) {
+        if (usuarioId == null) {
+            throw new RuntimeException("El ID del usuario es obligatorio para listar sus tareas");
+        }
+        if (estado == null || estado.isBlank()) {
+            return listarTareasPorUsuarioAsignado(usuarioId);
+        }
+
+        String estadoNormalizado = normalizarEstado(estado);
+        return tareaRepository.findByUsuarioAsignadoIdAndEstado(usuarioId, estadoNormalizado);
+    }
+
+    public List<MiembroCargaTrabajoResponse> reporteDistribucionCargaTrabajo(Long usuarioId) {
+        if (usuarioId == null) {
+            throw new RuntimeException("El ID del usuario administrador es obligatorio para generar el reporte");
+        }
+
+        Usuario administrador = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+
+        if (!"ADMINISTRADOR".equalsIgnoreCase(administrador.getRol())) {
+            throw new RuntimeException("Solo los administradores pueden acceder al reporte de distribución");
+        }
+
+        Long hogarId = administrador.getFamiliaId();
+        if (hogarId == null) {
+            throw new RuntimeException("El administrador no pertenece a ningún hogar");
+        }
+
+        List<Usuario> miembros = usuarioRepository.findByFamiliaId(hogarId);
+        List<Tarea> tareasHogar = tareaRepository.findByHogarId(hogarId);
+        Map<Long, List<Tarea>> tareasPorUsuario = tareasHogar.stream()
+                .filter(t -> t.getUsuarioAsignadoId() != null)
+                .collect(Collectors.groupingBy(Tarea::getUsuarioAsignadoId));
+
+        LocalDate hoy = LocalDate.now();
+
+        return miembros.stream()
+                .map(miembro -> {
+                    List<Tarea> tareasAsignadas = tareasPorUsuario.getOrDefault(miembro.getId(), List.of());
+                    long pendientes = tareasAsignadas.stream()
+                            .filter(t -> "PENDIENTE".equalsIgnoreCase(t.getEstado()))
+                            .count();
+                    long enProceso = tareasAsignadas.stream()
+                            .filter(t -> "EN_PROCESO".equalsIgnoreCase(t.getEstado()))
+                            .count();
+                    long completadas = tareasAsignadas.stream()
+                            .filter(t -> "COMPLETADA".equalsIgnoreCase(t.getEstado()))
+                            .count();
+                    long vencidas = tareasAsignadas.stream()
+                            .filter(t -> !"COMPLETADA".equalsIgnoreCase(t.getEstado())
+                                    && t.getFechaLimite() != null
+                                    && t.getFechaLimite().isBefore(hoy))
+                            .count();
+                    long total = tareasAsignadas.size();
+
+                    return new MiembroCargaTrabajoResponse(
+                            miembro.getId(),
+                            miembro.getName(),
+                            miembro.getRol(),
+                            pendientes,
+                            enProceso,
+                            completadas,
+                            vencidas,
+                            total
+                    );
+                })
+                .collect(Collectors.toList());
+    }
+
+    private String normalizarEstado(String estado) {
+        if (estado == null) {
+            return null;
+        }
+
+        String valor = estado.trim().toUpperCase();
+        if (valor.equals("EN PROGRESO")) {
+            return "EN_PROCESO";
+        }
+        if (valor.equals("COMPLETADA") || valor.equals("PENDIENTE") || valor.equals("EN_PROCESO")) {
+            return valor;
+        }
+        throw new RuntimeException("Estado de tarea no válido: " + estado);
     }
 
     /**

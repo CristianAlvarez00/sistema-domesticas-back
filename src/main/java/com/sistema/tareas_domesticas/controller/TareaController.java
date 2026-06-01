@@ -1,6 +1,7 @@
 package com.sistema.tareas_domesticas.controller;
 
 import com.sistema.tareas_domesticas.model.CreateTareaRequest;
+import com.sistema.tareas_domesticas.model.MiembroCargaTrabajoResponse;
 import com.sistema.tareas_domesticas.model.Tarea;
 import com.sistema.tareas_domesticas.model.TareaResponse;
 import com.sistema.tareas_domesticas.service.TareaService;
@@ -90,6 +91,50 @@ public class TareaController {
                     );
                 })
                 .collect(Collectors.toList());
+    }
+
+    @GetMapping("/mis-tareas")
+    public List<TareaResponse> listarMisTareas(
+            @RequestParam Long usuarioId,
+            @RequestParam(required = false) String estado) {
+        LocalDate hoy = LocalDate.now();
+
+        return tareaService.listarTareasPorUsuarioAsignadoYEstado(usuarioId, estado).stream()
+                .map(t -> {
+                    String alertaCalculada = null;
+                    if (!"COMPLETADA".equalsIgnoreCase(t.getEstado()) && t.getFechaLimite() != null) {
+                        if (t.getFechaLimite().isBefore(hoy)) {
+                            alertaCalculada = "VENCIDA";
+                        } else if (t.getFechaLimite().isEqual(hoy)) {
+                            alertaCalculada = "URGENTE";
+                        } else {
+                            alertaCalculada = "PENDIENTE";
+                        }
+                    }
+
+                    return new TareaResponse(
+                            t.getId(),
+                            t.getNombre(),
+                            t.getDescripcion(),
+                            t.getPrioridad(),
+                            t.getFechaLimite(),
+                            t.getEstado(),
+                            t.getHogarId(),
+                            alertaCalculada
+                    );
+                })
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping("/reporte-distribucion")
+    public ResponseEntity<List<MiembroCargaTrabajoResponse>> reporteDistribucionCargaTrabajo(
+            @RequestParam Long usuarioId) {
+        try {
+            List<MiembroCargaTrabajoResponse> reporte = tareaService.reporteDistribucionCargaTrabajo(usuarioId);
+            return ResponseEntity.ok(reporte);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     /**
