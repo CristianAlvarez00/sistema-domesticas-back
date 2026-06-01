@@ -7,25 +7,24 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController // Define que esto es una API REST y convierte lo que salga en JSON.
 @RequestMapping("/api/usuarios") // Ruta base del controller
-@CrossOrigin(origins = "*") // Permite que el React se conecte (CORS) dandole acceso desde cualquier servidor
+@CrossOrigin(origins = "*", allowedHeaders = "*", methods = {
+        RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.PATCH, RequestMethod.DELETE, RequestMethod.OPTIONS
+})
 public class UsuarioController {
 
     @Autowired
-    private UsuarioService usuarioService; //inyectamos una instancia de UsuarioService,
-                                            // la cual dentro de ella tiene otra instancia de UsuarioRepository
+    private UsuarioService usuarioService; // Inyectamos una instancia de UsuarioService
 
-    @PostMapping("/registro") // Atiende peticiones POST de registro. la funcion se ejecuta cuando llegue
-                                //peticion post desde api/usuarios/registro
-    public Usuario crearUsuario(@RequestBody Usuario usuario) { //Convierte el JSON que viene en el cuerpo
-                                                        // en un objeto tipo usuario y lo ingresa como parametro en la func
+    @PostMapping("/registro") // Atiende peticiones POST de registro
+    public Usuario crearUsuario(@RequestBody Usuario usuario) {
         return usuarioService.registrarUsuario(usuario);
     }
 
-    @PostMapping("/login")  //Atiende peticiones post. Se ejecuta cuando llegue peticion post a /api/usuarios/login
-    public Usuario login(@RequestBody Usuario datosLogin) { //Lo que reciba del react lo convierte en un objeto usuario
-        Usuario usuario = usuarioService.login(datosLogin.getEmail(), datosLogin.getPassword()); //Se le pasan el email y pw obtenidas del react
+    @PostMapping("/login")  // Atiende peticiones POST de login
+    public Usuario login(@RequestBody Usuario datosLogin) {
+        Usuario usuario = usuarioService.login(datosLogin.getEmail(), datosLogin.getPassword());
 
-        if (usuario == null) { //Si no se encontro usuario
+        if (usuario == null) { // Si no se encontró usuario
             throw new RuntimeException("Credenciales inválidas");
         }
 
